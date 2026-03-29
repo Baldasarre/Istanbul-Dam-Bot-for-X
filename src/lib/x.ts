@@ -16,5 +16,18 @@ export async function publishPost(text: string): Promise<void> {
     accessSecret: getRequiredEnv('X_ACCESS_TOKEN_SECRET')
   });
 
-  await client.v2.tweet(text);
+  try {
+    await client.v2.tweet(text);
+  } catch (error) {
+    const status = typeof (error as { code?: unknown })?.code === 'number'
+      ? (error as { code: number }).code
+      : null;
+    const detail = typeof (error as { data?: { detail?: unknown } })?.data?.detail === 'string'
+      ? (error as { data: { detail: string } }).data.detail
+      : null;
+
+    throw new Error(
+      `X paylaşımı başarısız${status !== null ? ` (HTTP ${status})` : ''}${detail ? `: ${detail}` : ''}`
+    );
+  }
 }

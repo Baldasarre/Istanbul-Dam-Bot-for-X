@@ -1,0 +1,52 @@
+name: Post Istanbul Dam Update
+
+on:
+  schedule:
+    - cron: '0 6,15 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: istanbul-dam-bot-post
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Restore state cache
+        uses: actions/cache@v4
+        with:
+          path: .data/state.json
+          key: istanbul-dam-bot-state-${{ github.run_id }}
+          restore-keys: |
+            istanbul-dam-bot-state-
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run check
+
+      - name: Run post
+        run: npm run post
+        env:
+          POST_ENABLED: 'true'
+          TZ: Europe/Istanbul
+          ISKI_API_TOKEN: ${{ secrets.ISKI_API_TOKEN }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}

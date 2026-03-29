@@ -7,7 +7,7 @@ export interface IskiSnapshot {
   fetchedAtIso: string;
   sourceUrl: string;
   generalOccupancyPercent: number;
-  lastYearSameDayPercent?: number;
+  lastYearSameMonthPercent?: number;
   reservoirs: ReservoirItem[];
   rawTextSample?: string;
 }

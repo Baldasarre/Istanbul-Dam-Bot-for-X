@@ -5,6 +5,27 @@ import { fetchIskiSnapshot } from './lib/iski.js';
 import { readState, writeState } from './lib/store.js';
 import { publishPost } from './lib/x.js';
 
+const SENSITIVE_ENV_KEYS = [
+  'ISKI_API_TOKEN',
+  'X_API_KEY',
+  'X_API_SECRET',
+  'X_ACCESS_TOKEN',
+  'X_ACCESS_TOKEN_SECRET',
+  'X_BEARER_TOKEN'
+] as const;
+
+function redactSensitive(value: string): string {
+  let output = value;
+
+  for (const key of SENSITIVE_ENV_KEYS) {
+    const secret = process.env[key];
+    if (!secret) continue;
+    output = output.split(secret).join(`[REDACTED:${key}]`);
+  }
+
+  return output;
+}
+
 async function main(): Promise<void> {
   const dryRun = process.argv.includes('--dry-run') || process.env.POST_ENABLED !== 'true';
   const state = await readState();
@@ -48,6 +69,7 @@ async function main(): Promise<void> {
 
 main().catch((error) => {
   console.error('Bot çalışırken hata oluştu:');
-  console.error(error instanceof Error ? error.message : error);
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(redactSensitive(message));
   process.exit(1);
 });

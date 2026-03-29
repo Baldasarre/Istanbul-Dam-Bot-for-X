@@ -21,16 +21,16 @@ export function buildPostText(snapshot: IskiSnapshot, previous?: IskiSnapshot): 
 
   lines.push(`💧 İstanbul Baraj Doluluk Oranı: %${formatPercent(snapshot.generalOccupancyPercent)}`);
 
-  if (typeof snapshot.lastYearSameDayPercent === 'number') {
-    const delta = snapshot.generalOccupancyPercent - snapshot.lastYearSameDayPercent;
+  if (typeof snapshot.lastYearSameMonthPercent === 'number') {
+    const delta = snapshot.generalOccupancyPercent - snapshot.lastYearSameMonthPercent;
     const absDelta = Math.abs(delta);
 
     if (delta > 0) {
-      lines.push(`📈 Geçen yıl aynı güne göre %${formatPercent(absDelta)} yükseliş.`);
+      lines.push(`📈 Geçen yıl aynı aya göre %${formatPercent(absDelta)} yükseliş.`);
     } else if (delta < 0) {
-      lines.push(`📉 Geçen yıl aynı güne göre %${formatPercent(absDelta)} düşüş.`);
+      lines.push(`📉 Geçen yıl aynı aya göre %${formatPercent(absDelta)} düşüş.`);
     } else {
-      lines.push('➖ Geçen yıl aynı güne göre değişim yok.');
+      lines.push('➖ Geçen yıl aynı aya göre değişim yok.');
     }
   }
 

@@ -13,7 +13,6 @@ Bu proje, İSKİ'nin baraj doluluk verisini çekip günde 2 kez X'te paylaşmak 
 ## Kurulum
 ```bash
 npm install
-cp .env.example .env
 ```
 
 ## Geliştirme
@@ -33,7 +32,7 @@ npm run post
 ```
 
 ## Önemli not
-Bu repo başlangıç seviyesinde iskelet sunar. İSKİ sayfasının HTML yapısı değişirse `src/lib/iski.ts` içindeki parser güncellenmelidir.
+Bot İSKİ API'sini kullanır. API token geçersiz/eksik olursa paylaşım yapılmaz.
 
 ## Önerilen deployment
 - GitHub Actions cron
@@ -54,6 +53,32 @@ Aşağıdaki anahtarları `.env` içine gir:
 - `X_ACCESS_TOKEN_SECRET`
 - `X_BEARER_TOKEN` (opsiyonel)
 - `POST_ENABLED` (`true` veya `false`)
+
+Örnek `.env`:
+```env
+ISKI_API_TOKEN=
+X_API_KEY=
+X_API_SECRET=
+X_ACCESS_TOKEN=
+X_ACCESS_TOKEN_SECRET=
+X_BEARER_TOKEN=
+POST_ENABLED=false
+TZ=Europe/Istanbul
+```
+
+## GitHub Actions ile otomatik paylaşım
+Repo içinde hazır cron workflow'u vardır: [post.yml](/Users/deniz/Desktop/istanbul-baraj-bot/.github/workflows/post.yml)
+
+1. GitHub repo -> `Settings` -> `Secrets and variables` -> `Actions` altında şu secret'ları ekle:
+   - `ISKI_API_TOKEN`
+   - `X_API_KEY`
+   - `X_API_SECRET`
+   - `X_ACCESS_TOKEN`
+   - `X_ACCESS_TOKEN_SECRET`
+2. `Actions` sekmesinden workflow'u bir kez manuel çalıştır (`Run workflow`).
+3. Otomatik cron saatleri UTC olarak tanımlı:
+   - `06:00 UTC` (Istanbul `09:00`)
+   - `15:00 UTC` (Istanbul `18:00`)
 
 ## Geliştirme sırası
 1. Dry-run çalışsın

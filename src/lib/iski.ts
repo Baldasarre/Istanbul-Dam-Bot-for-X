@@ -4,7 +4,7 @@ const SOURCE_URL = 'https://iski.istanbul/baraj-doluluk/';
 const API_BASE_URL = 'https://iskiapi.iski.istanbul/api/iski/baraj';
 const GENERAL_ENDPOINT = `${API_BASE_URL}/genelOran/v2`;
 const RESERVOIRS_ENDPOINT = `${API_BASE_URL}/mevcutSuMiktarlarininBarajlaraGoreDagilimi/v2`;
-const YEARLY_ENDPOINT = `${API_BASE_URL}/sonGunDolulukOraniYillaraGore/v2`;
+const MONTHLY_ENDPOINT = `${API_BASE_URL}/sonBirYildakiAySonlariDoluluk/v2`;
 
 interface GeneralApiResponse {
   data: {
@@ -23,13 +23,13 @@ interface ReservoirApiResponse {
   data: ReservoirApiItem[] | null;
 }
 
-interface YearlyApiItem {
+interface MonthlyApiItem {
   oran: number;
   tarih: string;
 }
 
-interface YearlyApiResponse {
-  data: YearlyApiItem[] | null;
+interface MonthlyApiResponse {
+  data: MonthlyApiItem[] | null;
 }
 
 function getRequiredEnv(name: string): string {
@@ -60,31 +60,39 @@ function parseSonGuncellemeToIso(input?: string): string {
   return parsed.toISOString();
 }
 
-function parseYearFromTrDate(input: string): number | null {
-  const match = input.match(/^\d{2}\.\d{2}\.(\d{4})$/);
+function parseTrDate(input: string): { day: number; month: number; year: number } | null {
+  const match = input.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
   if (!match) return null;
-  const year = Number(match[1]);
-  return Number.isInteger(year) ? year : null;
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+
+  if (!Number.isInteger(day) || !Number.isInteger(month) || !Number.isInteger(year)) return null;
+  if (day < 1 || day > 31 || month < 1 || month > 12) return null;
+
+  return { day, month, year };
 }
 
-function findLastYearSameDayPercent(items: YearlyApiItem[] | null | undefined): number | undefined {
+function findLastYearSameMonthPercent(items: MonthlyApiItem[] | null | undefined, fetchedAtIso: string): number | undefined {
   const valid = (items ?? []).filter((item) => isPercent(item?.oran) && typeof item?.tarih === 'string');
   if (valid.length === 0) return undefined;
 
-  const yearAndPercent = valid
+  const fetched = new Date(fetchedAtIso);
+  if (Number.isNaN(fetched.getTime())) return undefined;
+
+  const targetMonth = fetched.getUTCMonth() + 1;
+  const targetYear = fetched.getUTCFullYear() - 1;
+
+  const sameMonthLastYear = valid
     .map((item) => ({
-      year: parseYearFromTrDate(item.tarih),
+      date: parseTrDate(item.tarih),
       percent: item.oran
     }))
-    .filter((item): item is { year: number; percent: number } => item.year !== null);
+    .filter((item): item is { date: { day: number; month: number; year: number }; percent: number } => item.date !== null)
+    .find((item) => item.date.year === targetYear && item.date.month === targetMonth);
 
-  if (yearAndPercent.length === 0) return undefined;
-
-  const currentYear = Math.max(...yearAndPercent.map((item) => item.year));
-  const lastYear = currentYear - 1;
-  const lastYearEntry = yearAndPercent.find((item) => item.year === lastYear);
-
-  return lastYearEntry?.percent;
+  return sameMonthLastYear?.percent;
 }
 
 async function fetchJson<T>(url: string, token: string): Promise<T> {
@@ -109,7 +117,7 @@ export async function fetchIskiSnapshot(): Promise<IskiSnapshot> {
   const token = getRequiredEnv('ISKI_API_TOKEN');
   const generalRes = await fetchJson<GeneralApiResponse>(GENERAL_ENDPOINT, token);
   const reservoirsRes = await fetchJson<ReservoirApiResponse>(RESERVOIRS_ENDPOINT, token);
-  const yearlyRes = await fetchJson<YearlyApiResponse>(YEARLY_ENDPOINT, token);
+  const monthlyRes = await fetchJson<MonthlyApiResponse>(MONTHLY_ENDPOINT, token);
 
   const generalOccupancyPercent = generalRes.data?.oran;
   if (!isPercent(generalOccupancyPercent)) {
@@ -124,19 +132,19 @@ export async function fetchIskiSnapshot(): Promise<IskiSnapshot> {
     }));
 
   const fetchedAtIso = parseSonGuncellemeToIso(generalRes.sonGuncellemeZamani);
-  const lastYearSameDayPercent = findLastYearSameDayPercent(yearlyRes.data);
+  const lastYearSameMonthPercent = findLastYearSameMonthPercent(monthlyRes.data, fetchedAtIso);
 
   return {
     fetchedAtIso,
     sourceUrl: SOURCE_URL,
     generalOccupancyPercent,
-    lastYearSameDayPercent,
+    lastYearSameMonthPercent,
     reservoirs,
     rawTextSample: JSON.stringify(
       {
         sonGuncellemeZamani: generalRes.sonGuncellemeZamani,
         reservoirCount: reservoirs.length,
-        hasLastYearSameDay: typeof lastYearSameDayPercent === 'number'
+        hasLastYearSameMonth: typeof lastYearSameMonthPercent === 'number'
       },
       null,
       0
