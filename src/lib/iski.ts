@@ -1,10 +1,10 @@
 import type { IskiSnapshot, ReservoirItem } from '../types.js';
 
 const SOURCE_URL = 'https://iski.istanbul/baraj-doluluk/';
-const API_BASE_URL = 'https://iskiapi.iski.istanbul/api/iski/baraj';
-const GENERAL_ENDPOINT = `${API_BASE_URL}/genelOran/v2`;
-const RESERVOIRS_ENDPOINT = `${API_BASE_URL}/mevcutSuMiktarlarininBarajlaraGoreDagilimi/v2`;
-const MONTHLY_ENDPOINT = `${API_BASE_URL}/sonBirYildakiAySonlariDoluluk/v2`;
+const DEFAULT_API_BASE_URL = 'https://iskiapi.iski.istanbul/api/iski/baraj';
+const GENERAL_PATH = 'genelOran/v2';
+const RESERVOIRS_PATH = 'mevcutSuMiktarlarininBarajlaraGoreDagilimi/v2';
+const MONTHLY_PATH = 'sonBirYildakiAySonlariDoluluk/v2';
 
 interface GeneralApiResponse {
   data: {
@@ -32,12 +32,34 @@ interface MonthlyApiResponse {
   data: MonthlyApiItem[] | null;
 }
 
-function getRequiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Eksik ortam değişkeni: ${name}`);
+function normalizeBaseUrl(input: string): string {
+  return input.replace(/\/+$/, '');
+}
+
+function buildEndpoint(baseUrl: string, path: string): string {
+  return `${normalizeBaseUrl(baseUrl)}/${path.replace(/^\/+/, '')}`;
+}
+
+function getApiBaseUrl(): string {
+  const configured = process.env.ISKI_API_BASE_URL?.trim();
+  if (!configured) return DEFAULT_API_BASE_URL;
+  return normalizeBaseUrl(configured);
+}
+
+function getApiToken(apiBaseUrl: string): string | null {
+  const token = process.env.ISKI_API_TOKEN?.trim();
+  if (token) return token;
+
+  if (apiBaseUrl === DEFAULT_API_BASE_URL) {
+    throw new Error('Eksik ortam değişkeni: ISKI_API_TOKEN');
   }
-  return value;
+
+  return null;
+}
+
+function getRelayKey(): string | null {
+  const relayKey = process.env.ISKI_RELAY_KEY?.trim();
+  return relayKey && relayKey.length > 0 ? relayKey : null;
 }
 
 function isPercent(value: unknown): value is number {
@@ -95,15 +117,24 @@ function findLastYearSameMonthPercent(items: MonthlyApiItem[] | null | undefined
   return sameMonthLastYear?.percent;
 }
 
-async function fetchJson<T>(url: string, token: string): Promise<T> {
+async function fetchJson<T>(url: string, token: string | null, relayKey: string | null): Promise<T> {
+  const headers: Record<string, string> = {
+    accept: 'application/json, text/plain, */*',
+    'user-agent': 'Mozilla/5.0 (compatible; IstanbulBarajBot/0.1)'
+  };
+
+  if (token) {
+    headers.authorization = `Bearer ${token}`;
+    headers.origin = 'https://iski.istanbul';
+    headers.referer = 'https://iski.istanbul/';
+  }
+
+  if (relayKey) {
+    headers['x-relay-key'] = relayKey;
+  }
+
   const response = await fetch(url, {
-    headers: {
-      accept: 'application/json, text/plain, */*',
-      authorization: `Bearer ${token}`,
-      origin: 'https://iski.istanbul',
-      referer: 'https://iski.istanbul/',
-      'user-agent': 'Mozilla/5.0 (compatible; IstanbulBarajBot/0.1)'
-    }
+    headers
   });
 
   if (!response.ok) {
@@ -114,10 +145,13 @@ async function fetchJson<T>(url: string, token: string): Promise<T> {
 }
 
 export async function fetchIskiSnapshot(): Promise<IskiSnapshot> {
-  const token = getRequiredEnv('ISKI_API_TOKEN');
-  const generalRes = await fetchJson<GeneralApiResponse>(GENERAL_ENDPOINT, token);
-  const reservoirsRes = await fetchJson<ReservoirApiResponse>(RESERVOIRS_ENDPOINT, token);
-  const monthlyRes = await fetchJson<MonthlyApiResponse>(MONTHLY_ENDPOINT, token);
+  const apiBaseUrl = getApiBaseUrl();
+  const token = getApiToken(apiBaseUrl);
+  const relayKey = getRelayKey();
+
+  const generalRes = await fetchJson<GeneralApiResponse>(buildEndpoint(apiBaseUrl, GENERAL_PATH), token, relayKey);
+  const reservoirsRes = await fetchJson<ReservoirApiResponse>(buildEndpoint(apiBaseUrl, RESERVOIRS_PATH), token, relayKey);
+  const monthlyRes = await fetchJson<MonthlyApiResponse>(buildEndpoint(apiBaseUrl, MONTHLY_PATH), token, relayKey);
 
   const generalOccupancyPercent = generalRes.data?.oran;
   if (!isPercent(generalOccupancyPercent)) {
@@ -144,7 +178,8 @@ export async function fetchIskiSnapshot(): Promise<IskiSnapshot> {
       {
         sonGuncellemeZamani: generalRes.sonGuncellemeZamani,
         reservoirCount: reservoirs.length,
-        hasLastYearSameMonth: typeof lastYearSameMonthPercent === 'number'
+        hasLastYearSameMonth: typeof lastYearSameMonthPercent === 'number',
+        apiBaseUrl
       },
       null,
       0

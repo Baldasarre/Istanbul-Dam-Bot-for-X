@@ -39,6 +39,7 @@ Bot İSKİ API'sini kullanır. API token geçersiz/eksik olursa paylaşım yapı
 - Render Cron Job
 - Railway
 - Kendi VPS'in
+- Oracle Always Free VM + cron (rehber: [ORACLE_DEPLOY.md](/Users/deniz/Desktop/istanbul-baraj-bot/docs/ORACLE_DEPLOY.md))
 
 ## Günde 2 kez önerilen saatler
 - 09:00 Europe/Istanbul
@@ -47,6 +48,8 @@ Bot İSKİ API'sini kullanır. API token geçersiz/eksik olursa paylaşım yapı
 ## Ortam değişkenleri
 Aşağıdaki anahtarları `.env` içine gir:
 - `ISKI_API_TOKEN`
+- `ISKI_API_BASE_URL` (opsiyonel, varsayılan: resmi İSKİ API)
+- `ISKI_RELAY_KEY` (opsiyonel, relay kullanıyorsan)
 - `X_API_KEY`
 - `X_API_SECRET`
 - `X_ACCESS_TOKEN`
@@ -57,6 +60,8 @@ Aşağıdaki anahtarları `.env` içine gir:
 Örnek `.env`:
 ```env
 ISKI_API_TOKEN=
+ISKI_API_BASE_URL=
+ISKI_RELAY_KEY=
 X_API_KEY=
 X_API_SECRET=
 X_ACCESS_TOKEN=
@@ -65,6 +70,10 @@ X_BEARER_TOKEN=
 POST_ENABLED=false
 TZ=Europe/Istanbul
 ```
+
+## Oracle icin Relay (opsiyonel)
+Oracle'dan İSKİ'ye timeout alırsan Cloudflare Worker relay kullan:
+- Rehber: [ISKI_RELAY.md](/Users/deniz/Desktop/istanbul-baraj-bot/docs/ISKI_RELAY.md)
 
 ## GitHub Actions ile otomatik paylaşım
 Repo içinde hazır cron workflow'u vardır: [post.yml](/Users/deniz/Desktop/istanbul-baraj-bot/.github/workflows/post.yml)
