@@ -5,6 +5,9 @@ const DEFAULT_API_BASE_URL = 'https://iskiapi.iski.istanbul/api/iski/baraj';
 const GENERAL_PATH = 'genelOran/v2';
 const RESERVOIRS_PATH = 'mevcutSuMiktarlarininBarajlaraGoreDagilimi/v2';
 const MONTHLY_PATH = 'sonBirYildakiAySonlariDoluluk/v2';
+const FETCH_TIMEOUT_MS = 20_000;
+const MAX_FETCH_ATTEMPTS = 3;
+const BASE_RETRY_DELAY_MS = 1_500;
 
 interface GeneralApiResponse {
   data: {
@@ -40,26 +43,12 @@ function buildEndpoint(baseUrl: string, path: string): string {
   return `${normalizeBaseUrl(baseUrl)}/${path.replace(/^\/+/, '')}`;
 }
 
-function getApiBaseUrl(): string {
-  const configured = process.env.ISKI_API_BASE_URL?.trim();
-  if (!configured) return DEFAULT_API_BASE_URL;
-  return normalizeBaseUrl(configured);
-}
-
-function getApiToken(apiBaseUrl: string): string | null {
+function getApiToken(): string {
   const token = process.env.ISKI_API_TOKEN?.trim();
-  if (token) return token;
-
-  if (apiBaseUrl === DEFAULT_API_BASE_URL) {
+  if (!token) {
     throw new Error('Eksik ortam değişkeni: ISKI_API_TOKEN');
   }
-
-  return null;
-}
-
-function getRelayKey(): string | null {
-  const relayKey = process.env.ISKI_RELAY_KEY?.trim();
-  return relayKey && relayKey.length > 0 ? relayKey : null;
+  return token;
 }
 
 function isPercent(value: unknown): value is number {
@@ -117,41 +106,90 @@ function findLastYearSameMonthPercent(items: MonthlyApiItem[] | null | undefined
   return sameMonthLastYear?.percent;
 }
 
-async function fetchJson<T>(url: string, token: string | null, relayKey: string | null): Promise<T> {
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof Error) {
+    const cause = (error as Error & { cause?: unknown }).cause;
+    if (cause instanceof Error && cause.message) {
+      return `${error.message} | cause: ${cause.message}`;
+    }
+
+    if (typeof cause === 'object' && cause !== null) {
+      const code = (cause as { code?: unknown }).code;
+      if (typeof code === 'string') {
+        return `${error.message} | cause.code: ${code}`;
+      }
+    }
+
+    return error.message;
+  }
+
+  return String(error);
+}
+
+function isRetryableNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.name === 'AbortError') return true;
+
+  const message = error.message.toLowerCase();
+  if (message.includes('fetch failed') || message.includes('timed out')) return true;
+
+  const cause = (error as Error & { cause?: unknown }).cause;
+  if (typeof cause === 'object' && cause !== null) {
+    const code = (cause as { code?: unknown }).code;
+    return typeof code === 'string' && ['ETIMEDOUT', 'ECONNRESET', 'ENETUNREACH', 'EAI_AGAIN'].includes(code);
+  }
+
+  return false;
+}
+
+async function fetchJson<T>(url: string, token: string): Promise<T> {
   const headers: Record<string, string> = {
     accept: 'application/json, text/plain, */*',
-    'user-agent': 'Mozilla/5.0 (compatible; IstanbulBarajBot/0.1)'
+    'user-agent': 'Mozilla/5.0 (compatible; IstanbulBarajBot/0.1)',
+    authorization: `Bearer ${token}`,
+    origin: 'https://iski.istanbul',
+    referer: 'https://iski.istanbul/'
   };
 
-  if (token) {
-    headers.authorization = `Bearer ${token}`;
-    headers.origin = 'https://iski.istanbul';
-    headers.referer = 'https://iski.istanbul/';
+  for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        headers,
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+      });
+
+      if (!response.ok) {
+        throw new Error(`İSKİ API yanıtı başarısız. URL: ${url}, HTTP ${response.status}`);
+      }
+
+      return (await response.json()) as T;
+    } catch (error) {
+      const canRetry = isRetryableNetworkError(error) && attempt < MAX_FETCH_ATTEMPTS;
+      if (canRetry) {
+        await sleep(BASE_RETRY_DELAY_MS * attempt);
+        continue;
+      }
+
+      throw new Error(
+        `İSKİ API isteği başarısız. URL: ${url}, deneme: ${attempt}/${MAX_FETCH_ATTEMPTS}, hata: ${describeError(error)}`
+      );
+    }
   }
 
-  if (relayKey) {
-    headers['x-relay-key'] = relayKey;
-  }
-
-  const response = await fetch(url, {
-    headers
-  });
-
-  if (!response.ok) {
-    throw new Error(`İSKİ API yanıtı başarısız. URL: ${url}, HTTP ${response.status}`);
-  }
-
-  return (await response.json()) as T;
+  throw new Error(`İSKİ API isteği başarısız. URL: ${url}`);
 }
 
 export async function fetchIskiSnapshot(): Promise<IskiSnapshot> {
-  const apiBaseUrl = getApiBaseUrl();
-  const token = getApiToken(apiBaseUrl);
-  const relayKey = getRelayKey();
+  const apiBaseUrl = DEFAULT_API_BASE_URL;
+  const token = getApiToken();
 
-  const generalRes = await fetchJson<GeneralApiResponse>(buildEndpoint(apiBaseUrl, GENERAL_PATH), token, relayKey);
-  const reservoirsRes = await fetchJson<ReservoirApiResponse>(buildEndpoint(apiBaseUrl, RESERVOIRS_PATH), token, relayKey);
-  const monthlyRes = await fetchJson<MonthlyApiResponse>(buildEndpoint(apiBaseUrl, MONTHLY_PATH), token, relayKey);
+  const generalRes = await fetchJson<GeneralApiResponse>(buildEndpoint(apiBaseUrl, GENERAL_PATH), token);
+  const reservoirsRes = await fetchJson<ReservoirApiResponse>(buildEndpoint(apiBaseUrl, RESERVOIRS_PATH), token);
+  const monthlyRes = await fetchJson<MonthlyApiResponse>(buildEndpoint(apiBaseUrl, MONTHLY_PATH), token);
 
   const generalOccupancyPercent = generalRes.data?.oran;
   if (!isPercent(generalOccupancyPercent)) {
