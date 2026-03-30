@@ -2,11 +2,14 @@ name: Post Istanbul Dam Update
 
 on:
   schedule:
-    - cron: '0 6,15 * * *'
+    - cron: '0 9 * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 concurrency:
   group: istanbul-dam-bot-post
@@ -18,16 +21,16 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
 
       - name: Restore state cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .data/state.json
           key: istanbul-dam-bot-state-${{ github.run_id }}
@@ -45,6 +48,7 @@ jobs:
         env:
           POST_ENABLED: 'true'
           TZ: Europe/Istanbul
+          X_MAX_POST_LENGTH: ${{ secrets.X_MAX_POST_LENGTH }}
           ISKI_API_TOKEN: ${{ secrets.ISKI_API_TOKEN }}
           X_API_KEY: ${{ secrets.X_API_KEY }}
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
