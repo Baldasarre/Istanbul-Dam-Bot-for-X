@@ -43,7 +43,8 @@ jobs:
       - name: Typecheck
         run: npm run check
 
-      - name: Connectivity check
+      - name: Connectivity check (non-blocking)
+        continue-on-error: true
         run: |
           curl -4I --connect-timeout 20 https://api.x.com >/dev/null
           curl -4I --connect-timeout 20 https://iskiapi.iski.istanbul >/dev/null
